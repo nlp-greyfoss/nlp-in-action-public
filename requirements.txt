@@ -1,0 +1,6 @@
+#torch==1.13.1+cu116
+numpy==1.25.2
+pandas==2.1.0
+tqdm==4.66.1
+jieba==0.42.1
+tables==3.9.1

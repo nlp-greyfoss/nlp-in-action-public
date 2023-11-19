@@ -12,6 +12,7 @@ import jieba
 
 from torch.utils.data import DataLoader
 import torch.nn as nn
+from torch.optim.lr_scheduler import ExponentialLR
 
 from model import RE2
 
@@ -56,14 +57,16 @@ def evaluate(
 ) -> Tuple[float, float, float, float]:
     y_list, y_pred_list = [], []
     model.eval()
-    for x1, x2, y in tqdm(data_iter):
+    for x1, x2, mask1, mask2, y in tqdm(data_iter):
         x1 = x1.to(device).long()
         x2 = x2.to(device).long()
+        mask1 = mask1.to(device).bool().unsqueeze(2)
+        mask2 = mask2.to(device).bool().unsqueeze(2)
         y = y.float().to(device)
 
-        similarity = model(x1, x2)
+        output = model(x1, x2, mask1, mask2)
 
-        pred = (similarity > 0.5).int()
+        pred = torch.argmax(output, dim=1).long()
 
         y_pred_list.append(pred)
         y_list.append(y)
@@ -79,6 +82,7 @@ def train(
     model: nn.Module,
     criterion: nn.CrossEntropyLoss,
     optimizer: torch.optim.Optimizer,
+    grad_clipping: float,
     print_every: int = 500,
     verbose=True,
 ) -> None:
@@ -89,18 +93,20 @@ def train(
         x2 = x2.to(device).long()
         mask1 = mask1.to(device).bool().unsqueeze(2)
         mask2 = mask2.to(device).bool().unsqueeze(2)
-        y = y.float().to(device)
+        y = torch.LongTensor(y).to(device)
 
-        similarity = model(x1, x2, mask1, mask2)
+        output = model(x1, x2, mask1, mask2)
 
-        loss = criterion(similarity, y)
+        loss = criterion(output, y)
 
         optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clipping)
+
         optimizer.step()
 
         if verbose and (step + 1) % print_every == 0:
-            pred = (similarity > 0.5).int()
+            pred = torch.argmax(output, dim=1).long()
             acc, p, r, f1 = metrics(y, pred)
 
             print(
@@ -118,7 +124,7 @@ if __name__ == "__main__":
         reload_model=False,
         cuda=True,
         learning_rate=1e-3,
-        batch_size=64,
+        batch_size=256,
         num_epochs=10,
         max_len=50,
         embedding_dim=300,
@@ -126,11 +132,12 @@ if __name__ == "__main__":
         encoder_layers=2,
         num_blocks=2,
         kernel_sizes=[3],
-        dropout=0.8,
+        dropout=0.2,
         min_freq=2,
         project_func="linear",
-        grad_clipping=5,
-        print_every=500,
+        grad_clipping=2.0,
+        print_every=300,
+        num_classes=2,
         verbose=True,
     )
 
@@ -215,7 +222,7 @@ if __name__ == "__main__":
     dev_data_loader = DataLoader(dev_dataset, batch_size=args.batch_size)
     test_data_loader = DataLoader(test_dataset, batch_size=args.batch_size)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
     criterion = nn.CrossEntropyLoss()
 
     for epoch in range(args.num_epochs):
@@ -224,6 +231,7 @@ if __name__ == "__main__":
             model,
             criterion,
             optimizer,
+            args.grad_clipping,
             print_every=args.print_every,
             verbose=args.verbose,
         )

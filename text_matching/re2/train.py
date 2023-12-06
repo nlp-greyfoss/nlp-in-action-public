@@ -8,48 +8,13 @@ from typing import Tuple
 from dataset import TMVectorizer, TMDataset, Vocabulary
 from tqdm import tqdm
 
-import jieba
 
 from torch.utils.data import DataLoader
 import torch.nn as nn
-from torch.optim.lr_scheduler import ExponentialLR
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from model import RE2
-
-
-def make_dirs(dirpath):
-    if not os.path.exists(dirpath):
-        os.makedirs(dirpath)
-
-
-def tokenize(sentence: str):
-    return list(jieba.cut(sentence))
-
-
-def build_dataframe_from_csv(dataset_csv: str) -> pd.DataFrame:
-    df = pd.read_csv(
-        dataset_csv,
-        sep="\t",
-        header=None,
-        names=["sentence1", "sentence2", "label"],
-    )
-
-    df.sentence1 = df.sentence1.apply(tokenize)
-    df.sentence2 = df.sentence2.apply(tokenize)
-
-    return df
-
-
-def metrics(y: torch.Tensor, y_pred: torch.Tensor) -> Tuple[float, float, float, float]:
-    TP = ((y_pred == 1) & (y == 1)).sum().float()  # True Positive
-    TN = ((y_pred == 0) & (y == 0)).sum().float()  # True Negative
-    FN = ((y_pred == 0) & (y == 1)).sum().float()  # False Negatvie
-    FP = ((y_pred == 1) & (y == 0)).sum().float()  # False Positive
-    p = TP / (TP + FP).clamp(min=1e-8)  # Precision
-    r = TP / (TP + FN).clamp(min=1e-8)  # Recall
-    F1 = 2 * r * p / (r + p).clamp(min=1e-8)  # F1 score
-    acc = (TP + TN) / (TP + TN + FP + FN).clamp(min=1e-8)  # Accurary
-    return acc, p, r, F1
+from utils import *
 
 
 def evaluate(
@@ -63,8 +28,8 @@ def evaluate(
         mask1 = mask1.to(device).bool().unsqueeze(2)
         mask2 = mask2.to(device).bool().unsqueeze(2)
         y = y.float().to(device)
-
-        output = model(x1, x2, mask1, mask2)
+        with torch.no_grad():
+            output = model(x1, x2, mask1, mask2)
 
         pred = torch.argmax(output, dim=1).long()
 
@@ -83,12 +48,14 @@ def train(
     criterion: nn.CrossEntropyLoss,
     optimizer: torch.optim.Optimizer,
     grad_clipping: float,
-    print_every: int = 500,
-    verbose=True,
 ) -> None:
     model.train()
 
-    for step, (x1, x2, mask1, mask2, y) in enumerate(tqdm(data_iter)):
+    tqdm_iter = tqdm(data_iter)
+
+    running_loss = 0.0
+
+    for step, (x1, x2, mask1, mask2, y) in enumerate(tqdm_iter):
         x1 = x1.to(device).long()
         x2 = x2.to(device).long()
         mask1 = mask1.to(device).bool().unsqueeze(2)
@@ -98,6 +65,7 @@ def train(
         output = model(x1, x2, mask1, mask2)
 
         loss = criterion(output, y)
+        running_loss += loss.item()
 
         optimizer.zero_grad()
         loss.backward()
@@ -105,17 +73,13 @@ def train(
 
         optimizer.step()
 
-        if verbose and (step + 1) % print_every == 0:
-            pred = torch.argmax(output, dim=1).long()
-            acc, p, r, f1 = metrics(y, pred)
-
-            print(
-                f" TRAIN iter={step+1} loss={loss.item():.6f} accuracy={acc:.3f} precision={p:.3f} recal={r:.3f} f1 score={f1:.4f}"
-            )
+        description = f" TRAIN iter={step+1} loss={running_loss / (step + 1):.6f}"
+        tqdm_iter.set_description(description)
 
 
 if __name__ == "__main__":
     args = Namespace(
+        dataset_csv="text_matching/data/lcqmc/{}.txt",
         dataset_csv="text_matching/data/lcqmc/{}.txt",
         vectorizer_file="vectorizer.json",
         model_state_file="model.pth",
@@ -123,11 +87,15 @@ if __name__ == "__main__":
         save_dir=f"{os.path.dirname(__file__)}{os.sep}model_storage",
         reload_model=False,
         cuda=True,
-        learning_rate=1e-3,
-        batch_size=256,
-        num_epochs=10,
+        learning_rate=5e-4,
+        batch_size=128,
+        num_epochs=50,
         max_len=50,
         embedding_dim=300,
+        embedding_saved_path="text_matching/data/embeddings.pt",
+        embedding_pretrained_path="text_matching/data/word2vec.zh.300.char.model",
+        load_embeding=True,
+        fix_embeddings=False,
         hidden_size=150,
         encoder_layers=2,
         num_blocks=2,
@@ -135,13 +103,12 @@ if __name__ == "__main__":
         dropout=0.2,
         min_freq=2,
         project_func="linear",
-        grad_clipping=2.0,
-        print_every=300,
+        grad_clipping=10.0,
         num_classes=2,
-        verbose=True,
     )
 
     make_dirs(args.save_dir)
+    set_random_seed(seed=47)
 
     print(f"Arguments : {args}")
 
@@ -179,6 +146,7 @@ if __name__ == "__main__":
     if os.path.exists(vectorizer_path):
         vectorizer = TMVectorizer.load_vectorizer(vectorizer_path)
         print("Loads vectorizer file.")
+        vocab = vectorizer.vocab
         args.vocab_size = len(vectorizer.vocab)
     else:
         print("Creating a new Vectorizer.")
@@ -199,9 +167,24 @@ if __name__ == "__main__":
     test_dataset = TMDataset(test_df, vectorizer)
     dev_dataset = TMDataset(dev_df, vectorizer)
 
+    # fix random seed
+    set_random_seed()
+
     model = RE2(args)
 
-    print(f"Model: {model}")
+    if args.load_embeding and os.path.exists(args.embedding_saved_path):
+        model.embedding.load_state_dict(torch.load(args.embedding_saved_path))
+        print("loading saved embedding")
+    elif args.load_embeding and os.path.exists(args.embedding_pretrained_path):
+        embeddings = load_embedings(vocab, args.embedding_pretrained_path)
+
+        model.embedding.embedding.load_state_dict({"weight": torch.tensor(embeddings)})
+        model.embedding.embedding.weight.requires_grad = not args.fix_embeddings
+
+        torch.save(model.embedding.embedding.state_dict(), args.embedding_saved_path)
+        print("loading pretrained embedding")
+    else:
+        print("init embedding from stratch")
 
     model_saved_path = os.path.join(args.save_dir, args.model_state_file)
     if args.reload_model and os.path.exists(model_saved_path):
@@ -211,6 +194,8 @@ if __name__ == "__main__":
         print("New model")
 
     model = model.to(device)
+
+    print(f"Model: {model}")
 
     model_save_path = os.path.join(
         args.save_dir, f"{datetime.now().strftime('%Y%m%d%H%M%S')}-model.pth"
@@ -225,25 +210,42 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
     criterion = nn.CrossEntropyLoss()
 
-    for epoch in range(args.num_epochs):
-        train(
-            train_data_loader,
-            model,
-            criterion,
-            optimizer,
-            args.grad_clipping,
-            print_every=args.print_every,
-            verbose=args.verbose,
-        )
-        print("Begin evalute on dev set.")
-        with torch.no_grad():
-            acc, p, r, f1 = evaluate(dev_data_loader, model)
+    lr_scheduler = ReduceLROnPlateau(optimizer, mode="max", factor=0.85, patience=0)
 
-            print(
-                f"EVALUATE [{epoch+1}/{args.num_epochs}]  accuracy={acc:.3f} precision={p:.3f} recal={r:.3f} f1 score={f1:.4f}"
-            )
+    best_value = 0.0
+
+    early_stopper = EarlyStopper(mode="max")
+
+    for epoch in range(args.num_epochs):
+        train(train_data_loader, model, criterion, optimizer, args.grad_clipping)
+
+        acc, p, r, f1 = evaluate(dev_data_loader, model)
+
+        lr_scheduler.step(acc)
+
+        if acc > best_value:
+            best_value = acc
+            print(f"Save model with best acc :{acc:4f}")
+            torch.save(model.state_dict(), model_save_path)
+
+        if early_stopper.step(acc):
+            print(f"Stop from early stopping.")
+            break
+
+        acc, p, r, f1 = evaluate(dev_data_loader, model)
+
+        print(
+            f"EVALUATE [{epoch+1}/{args.num_epochs}]  accuracy={acc:.3f} precision={p:.3f} recal={r:.3f} f1 score={f1:.4f}"
+        )
 
     model.eval()
 
     acc, p, r, f1 = evaluate(test_data_loader, model)
     print(f"TEST accuracy={acc:.3f} precision={p:.3f} recal={r:.3f} f1 score={f1:.4f}")
+
+    model.load_state_dict(torch.load(model_save_path))
+    model.to(device)
+    acc, p, r, f1 = evaluate(test_data_loader, model)
+    print(
+        f"TEST[best score] accuracy={acc:.3f} precision={p:.3f} recal={r:.3f} f1 score={f1:.4f}"
+    )

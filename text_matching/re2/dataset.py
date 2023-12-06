@@ -72,6 +72,10 @@ class Vocabulary:
     def __len__(self) -> int:
         return len(self._idx_to_token)
 
+    def __iter__(self):
+        for idx, token in self._idx_to_token.items():
+            yield idx, token
+
     def __getitem__(self, tokens: list[str] | str) -> list[int] | int:
         """Retrieve the indices associated with the tokens or the index with the single token
 

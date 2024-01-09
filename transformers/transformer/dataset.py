@@ -28,8 +28,6 @@ class NMTDataset(Dataset):
         Args:
             text_df (pd.DataFrame): a DataFrame which contains the processed source and target sentences
         """
-        # sorted by target length
-        # text_df = text_df.iloc[text_df["target"].apply(len).sort_values().index]
         self.text_df = text_df
 
         self.padding_index = pad_idx

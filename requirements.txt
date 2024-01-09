@@ -4,3 +4,9 @@ pandas==2.1.0
 tqdm==4.66.1
 jieba==0.42.1
 tables==3.9.1
+zhconv==1.4.3
+sacrebleu==2.4.0
+transformers==4.30.2
+datasets==2.14.4
+sentencepiece==0.1.99
+GPUtil==1.4.0

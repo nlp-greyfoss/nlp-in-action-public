@@ -19,20 +19,20 @@ class TrainArugment:
     dataframe_file: str = "dataframe.{}.pkl"
     use_dataframe_cache: bool = True
     cuda: bool = True
-    num_epochs: int = 40
+    num_epochs: int = 1
     batch_size: int = 32
     gradient_accumulation_steps: int = 1
     grad_clipping: int = 0  # 0 dont use grad clip
-    betas: Tuple[float, float] = (0.9, 0.997)
-    eps: float = 1e-6
+    betas: Tuple[float, float] = (0.9, 0.98)
+    eps: float = 1e-9
     label_smoothing: float = 0
-    warmup_steps: int = 6000
+    warmup_steps: int = 4000
     warmup_factor: float = 0.5
     only_test: bool = False
     max_gen_len: int = 60
-    use_wandb: bool = True
+    use_wandb: bool = False
     patient: int = 5
-    gpus = [1, 2, 3]
+    gpus = [0] # [0, 1, 2, 3]
     seed = 12345
     calc_bleu_during_train: bool = True
 
@@ -50,8 +50,8 @@ class ModelArugment:
     )
     source_vocab_size: int = 32000
     target_vocab_size: int = 32000
+    attention_bias: bool = False
     pad_idx: int = 0
-    norm_first: bool = True
 
 
 train_args = TrainArugment()

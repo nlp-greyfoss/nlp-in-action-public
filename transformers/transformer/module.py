@@ -80,6 +80,7 @@ class MultiHeadAttention(nn.Module):
         d_model: int = 512,
         n_heads: int = 8,
         dropout: float = 0.1,
+        bias: bool = True,
     ) -> None:
         """
 
@@ -94,10 +95,10 @@ class MultiHeadAttention(nn.Module):
         self.n_heads = n_heads
         self.d_key = d_model // n_heads  # dimension of every head
 
-        self.q = nn.Linear(d_model, d_model, bias=False)  # query matrix
-        self.k = nn.Linear(d_model, d_model, bias=False)  # key matrix
-        self.v = nn.Linear(d_model, d_model, bias=False)  # value matrix
-        self.concat = nn.Linear(d_model, d_model, bias=False)  # output
+        self.q = nn.Linear(d_model, d_model, bias=bias)  # query matrix
+        self.k = nn.Linear(d_model, d_model, bias=bias)  # key matrix
+        self.v = nn.Linear(d_model, d_model, bias=bias)  # value matrix
+        self.concat = nn.Linear(d_model, d_model, bias=bias)  # output
 
         self.dropout = nn.Dropout(dropout)
 
@@ -243,6 +244,7 @@ class EncoderBlock(nn.Module):
         n_heads: int,
         d_ff: int,
         dropout: float,
+        attention_bias: bool = True,
         norm_first: bool = False,
     ) -> None:
         """
@@ -260,7 +262,7 @@ class EncoderBlock(nn.Module):
 
         self.norm_first = norm_first
 
-        self.attention = MultiHeadAttention(d_model, n_heads, dropout)
+        self.attention = MultiHeadAttention(d_model, n_heads, dropout, attention_bias)
         self.norm1 = LayerNorm(d_model)
 
         self.ff = PositionWiseFeedForward(d_model, d_ff, dropout)
@@ -315,6 +317,7 @@ class Encoder(nn.Module):
         n_heads: int,
         d_ff: int,
         dropout: float = 0.1,
+        attention_bias: bool = True,
         norm_first: bool = False,
     ) -> None:
         """
@@ -330,7 +333,7 @@ class Encoder(nn.Module):
         # stack n_layers encoder blocks
         self.layers = nn.ModuleList(
             [
-                EncoderBlock(d_model, n_heads, d_ff, dropout, norm_first)
+                EncoderBlock(d_model, n_heads, d_ff, dropout, attention_bias, norm_first)
                 for _ in range(n_layers)
             ]
         )
@@ -368,6 +371,7 @@ class DecoderBlock(nn.Module):
         n_heads: int,
         d_ff: int,
         dropout: float,
+        attention_bias: bool = True,
         norm_first: bool = False,
     ) -> None:
         """
@@ -383,10 +387,10 @@ class DecoderBlock(nn.Module):
         super().__init__()
         self.norm_first = norm_first
         # masked multi-head attention
-        self.masked_attention = MultiHeadAttention(d_model, n_heads, dropout)
+        self.masked_attention = MultiHeadAttention(d_model, n_heads, dropout, attention_bias)
         self.norm1 = LayerNorm(d_model)
         # cross multi-head attention
-        self.cross_attention = MultiHeadAttention(d_model, n_heads, dropout)
+        self.cross_attention = MultiHeadAttention(d_model, n_heads, dropout, attention_bias)
         self.norm2 = LayerNorm(d_model)
         # position-wise feed-forward network
         self.ff = PositionWiseFeedForward(d_model, d_ff, dropout)
@@ -464,6 +468,7 @@ class Decoder(nn.Module):
         n_heads: int,
         d_ff: int,
         dropout: float = 0.1,
+        attention_bias: bool=True,
         norm_first: bool = False,
     ) -> None:
         """
@@ -479,7 +484,7 @@ class Decoder(nn.Module):
         # stack n_layers decoder blocks
         self.layers = nn.ModuleList(
             [
-                DecoderBlock(d_model, n_heads, d_ff, dropout, norm_first)
+                DecoderBlock(d_model, n_heads, d_ff, dropout, attention_bias, norm_first)
                 for _ in range(n_layers)
             ]
         )
@@ -530,6 +535,7 @@ class Transformer(nn.Module):
         d_ff: int = 2048,
         dropout: float = 0.1,
         max_positions: int = 5000,
+        attention_bias: bool = True,
         pad_idx: int = 0,
         norm_first: bool = False,
     ) -> None:
@@ -545,7 +551,8 @@ class Transformer(nn.Module):
             d_ff (int, optional): dimension of inner feed-forward network. Defaults to 2048.
             dropout (float, optional): dropout ratio. Defaults to 0.1.
             max_positions (int, optional): maximum sequence length for positional encoding. Defaults to 5000.
-            pad_idx (int, optional): pad index. Defaults to 0.
+            pad_idx (int, optional): pad index. Defaults to 0.            
+            attention_bias (bool):If True, the attention linear layer add an additive bias. Default to True.
             norm_first (bool): if True, layer norm is done prior to attention and feedforward operations(Pre-Norm).
                 Otherwise it's done after(Post-Norm). Default to False.
         """
@@ -557,10 +564,10 @@ class Transformer(nn.Module):
         self.dec_pos = PositionalEncoding(d_model, dropout, max_positions)
 
         self.encoder = Encoder(
-            d_model, num_encoder_layers, n_heads, d_ff, dropout, norm_first
+            d_model, num_encoder_layers, n_heads, d_ff, dropout, attention_bias, norm_first
         )
         self.decoder = Decoder(
-            d_model, num_decoder_layers, n_heads, d_ff, dropout, norm_first
+            d_model, num_decoder_layers, n_heads, d_ff, dropout, attention_bias, norm_first
         )
 
         self.pad_idx = pad_idx

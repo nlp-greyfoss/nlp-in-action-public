@@ -118,6 +118,9 @@ def calculate_bleu(
     rank: int,
     save_result: bool = False,
     save_path: str = "result.txt",
+    use_cache: bool = True,
+    generation_mode: str = "beam_search",
+    num_beams: int = 1,
 ) -> float:
     candidates = []
     references = []
@@ -128,7 +131,11 @@ def calculate_bleu(
     for batch in tqdm(data_loader):
         source = batch.source.to(rank)
         token_indices = model.translate(
-            source, max_gen_len=max_len
+            source,
+            max_gen_len=max_len,
+            use_cache=use_cache,
+            num_beams=num_beams,
+            generation_mode=generation_mode,
         )
         token_indices = token_indices.cpu().tolist()
 
@@ -256,10 +263,11 @@ def main(rank, world_size):
     valid_dataset = get_dataset(rank, source_tokenizer, target_tokenizer, "dev")
 
     train_dataloader = prepare_dataloader(
-        train_dataset, rank, world_size, train_args.batch_size
+        train_dataset, rank, world_size, train_args.train_batch_size
     )
+
     valid_dataloader = prepare_dataloader(
-        valid_dataset, rank, world_size, train_args.batch_size
+        valid_dataset, rank, world_size, train_args.eval_batch_size
     )
 
     model = TranslationHead(
@@ -355,7 +363,10 @@ def main(rank, world_size):
                 train_args.max_gen_len,
                 rank,
                 save_result=True,
-                save_path="result-dev.txt"
+                save_path="result-dev.txt",
+                use_cache=train_args.use_kv_cache,
+                generation_mode=train_args.generation_mode,
+                num_beams=train_args.num_beams,
             )
             torch.cuda.empty_cache()
             metric_score = valid_bleu_score

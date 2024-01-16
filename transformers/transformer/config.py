@@ -19,8 +19,9 @@ class TrainArugment:
     dataframe_file: str = "dataframe.{}.pkl"
     use_dataframe_cache: bool = True
     cuda: bool = True
-    num_epochs: int = 1
-    batch_size: int = 32
+    num_epochs: int = 40
+    train_batch_size: int = 32
+    eval_batch_size: int = 32
     gradient_accumulation_steps: int = 1
     grad_clipping: int = 0  # 0 dont use grad clip
     betas: Tuple[float, float] = (0.9, 0.98)
@@ -28,13 +29,16 @@ class TrainArugment:
     label_smoothing: float = 0
     warmup_steps: int = 4000
     warmup_factor: float = 0.5
-    only_test: bool = False
+    only_test: bool = True
     max_gen_len: int = 60
+    generation_mode: str = "beam_search"
+    num_beams: int = 3
     use_wandb: bool = False
     patient: int = 5
-    gpus = [0] # [0, 1, 2, 3]
+    gpus = [1, 2, 3]
     seed = 12345
     calc_bleu_during_train: bool = True
+    use_kv_cache: bool = True
 
 
 @dataclass

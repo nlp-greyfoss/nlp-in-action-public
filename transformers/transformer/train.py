@@ -26,7 +26,7 @@ from utils import (
     count_parameters,
     EarlyStopper,
     set_random_seed,
-    LabelSmoothingLoss
+    LabelSmoothingLoss,
 )
 
 
@@ -87,6 +87,9 @@ def calculate_bleu(
     device: torch.device,
     save_result: bool = False,
     save_path: str = "result.txt",
+    use_cache: bool = True,
+    generation_mode: str = "beam_search",
+    num_beams: int = 5,
 ) -> float:
     candidates = []
     references = []
@@ -96,7 +99,13 @@ def calculate_bleu(
     for batch in tqdm(data_loader):
         source = batch.source.to(device)
 
-        token_indices = model.translate(source, max_gen_len=max_len)
+        token_indices = model.translate(
+            source,
+            max_gen_len=max_len,
+            use_cache=use_cache,
+            num_beams=num_beams,
+            generation_mode=generation_mode,
+        )
         token_indices = token_indices.cpu().tolist()
         candidates.extend(tgt_tokenizer.decode_ids(token_indices))
 
@@ -158,6 +167,9 @@ if __name__ == "__main__":
         model_file=train_args.tgt_tokenizer_path
     )
 
+    if train_args.only_test:
+        train_args.use_wandb = False
+
     if train_args.cuda:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     else:
@@ -213,19 +225,20 @@ if __name__ == "__main__":
 
     train_dataloader = DataLoader(
         train_dataset,
-        shuffle=True,
-        batch_size=train_args.batch_size,
+        shuffle=False,
+        batch_size=train_args.train_batch_size,
         collate_fn=train_dataset.collate_fn,
     )
     valid_dataloader = DataLoader(
         valid_dataset,
         shuffle=False,
-        batch_size=train_args.batch_size,
+        batch_size=train_args.train_batch_size,
         collate_fn=valid_dataset.collate_fn,
     )
     test_dataloader = DataLoader(
         test_dataset,
-        batch_size=train_args.batch_size,
+        shuffle=False,
+        batch_size=train_args.train_batch_size,
         collate_fn=test_dataset.collate_fn,
     )
 
@@ -257,7 +270,7 @@ if __name__ == "__main__":
 
     train_criterion = LabelSmoothingLoss(train_args.label_smoothing, model_args.pad_idx)
     # no label smoothing for validation
-    valid_criterion = LabelSmoothingLoss()
+    valid_criterion = LabelSmoothingLoss(pad_idx=model_args.pad_idx)
 
     optimizer = torch.optim.Adam(
         model.parameters(), betas=train_args.betas, eps=train_args.eps
@@ -301,6 +314,9 @@ if __name__ == "__main__":
                 device,
                 save_result=True,
                 save_path="result-dev.txt",
+                use_cache=train_args.use_kv_cache,
+                generation_mode=train_args.generation_mode,
+                num_beams=train_args.num_beams,
             )
             torch.cuda.empty_cache()
 
@@ -328,7 +344,6 @@ if __name__ == "__main__":
                 break
 
     model.load_state_dict(torch.load(train_args.model_save_path))
-    test_loss = evaluate(model, test_dataloader, device, valid_criterion)
     # calculate bleu score
     test_bleu_score = calculate_bleu(
         model,
@@ -337,5 +352,8 @@ if __name__ == "__main__":
         train_args.max_gen_len,
         device,
         save_result=True,
+        use_cache=train_args.use_kv_cache,
+        generation_mode=train_args.generation_mode,
+        num_beams=train_args.num_beams,
     )
-    print(f"TEST loss={test_loss:.4f} bleu score: {test_bleu_score:.2f}")
+    print(f"Test bleu score: {test_bleu_score:.2f}")

@@ -7,6 +7,8 @@ Hello	Hi	1
 Nice to see you.	Nice	0
 ```
 
+Prepare the train.txt/test.tx/dev.txt under the data dir.
+
 # Train
 
 Change arguments in `train.sh`.
@@ -17,8 +19,10 @@ sh train.sh
 
 # Test
 
-
-
+Change `model_name_or_path` in `test.sh` as output of `train.py`.
+```sh
+sh test.sh
+```
 
 
 

@@ -47,9 +47,7 @@ class SentenceBert(nn.Module):
         self.max_length = max_length
         self.pooling_mode = pooling_mode
 
-        self.loss_fct = nn.CrossEntropyLoss(reduction="mean")
-        # (u, v, |u - v|)
-        self.classifier = nn.Linear(self.model.config.hidden_size * 3, num_classes)
+        self.loss_fct = nn.MSELoss()
 
     def sentence_embedding(self, last_hidden_state, attention_mask):
         if self.pooling_mode == "mean":
@@ -109,21 +107,9 @@ class SentenceBert(nn.Module):
 
         return all_embeddings
 
-    def concat_embedding(self, source_embeddings, target_embeddings):
-        embeddings = torch.cat(
-            [
-                source_embeddings,
-                target_embeddings,
-                torch.abs(source_embeddings - target_embeddings),
-            ],
-            dim=-1,
-        )
-        return self.classifier(embeddings)
-
-    def compute_loss(self, source_embed, target_embed, labels):
-        logits = self.concat_embedding(source_embed, target_embed)
-        labels = torch.LongTensor(labels).to(self.device)
-        return self.loss_fct(logits, labels)
+    def compute_loss(self, scores, labels):
+        labels = torch.tensor(labels).float().to(self.device)
+        return self.loss_fct(scores, labels.view(-1))
 
     def forward(self, source, target, labels) -> BiOutput:
         """
@@ -136,7 +122,7 @@ class SentenceBert(nn.Module):
 
         scores = torch.cosine_similarity(source_embed, target_embed)
 
-        loss = self.compute_loss(source_embed, target_embed, labels)
+        loss = self.compute_loss(scores, labels)
         return BiOutput(loss, scores)
 
     def save_pretrained(self, output_dir: str):

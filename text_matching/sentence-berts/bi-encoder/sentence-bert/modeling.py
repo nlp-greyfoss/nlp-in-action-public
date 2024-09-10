@@ -27,7 +27,6 @@ class SentenceBert(nn.Module):
         model_name: str,
         trust_remote_code: bool = True,
         max_length: int = None,
-        num_classes: int = 2,
         pooling_mode: str = "mean",
         normalize_embeddings: bool = False,
     ) -> None:

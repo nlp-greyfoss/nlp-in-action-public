@@ -51,7 +51,6 @@ class SentenceBert(nn.Module):
 
         self.cross_entropy_loss = nn.CrossEntropyLoss()
 
-
     def sentence_embedding(self, last_hidden_state, attention_mask):
         if self.pooling_mode == "mean":
             attention_mask = attention_mask.unsqueeze(-1).float()
@@ -85,9 +84,8 @@ class SentenceBert(nn.Module):
                 truncation=True,
                 return_tensors="pt",
                 return_attention_mask=True,
-                max_length=self.max_length
+                max_length=self.max_length,
             ).to(self.device)
-
 
             out_features = self.model(**features, return_dict=True)
 
@@ -114,8 +112,10 @@ class SentenceBert(nn.Module):
 
     def compute_loss(self, anchor_embed, pos_embed, neg_embed):
         logits_pos = torch.cosine_similarity(anchor_embed, pos_embed, dim=-1)
-        logits_neg = torch.cosine_similarity(anchor_embed.unsqueeze(1), neg_embed.unsqueeze(0), dim=-1)
-        
+        logits_neg = torch.cosine_similarity(
+            anchor_embed.unsqueeze(1), neg_embed.unsqueeze(0), dim=-1
+        )
+
         logits = torch.cat([logits_pos.unsqueeze(1), logits_neg], dim=1)
         logits /= self.temperature
 
@@ -125,13 +125,16 @@ class SentenceBert(nn.Module):
     def forward(self, anchor, positive, negative) -> BiOutput:
         """
         Args:
-            anchor :
-            positive :
-            negative :
+            anchor : list of sentences, len: batch_size
+            positive : list of sentences, len: batch_size
+            negative : list of list
         """
+        # anchor_embed (batch_size, embed_dim)
         anchor_embed = self.encode(anchor)
+        # pos_embed (batch_size, embed_dim)
         pos_embed = self.encode(positive)
-        neg_embed =  torch.cat([self.encode(neg) for neg in negative] , dim=0)
+        # neg_embed (batch_size * num_of_negatives, embed_dim)
+        neg_embed = self.encode([item for sublist in negative for item in sublist])
 
         loss = self.compute_loss(anchor_embed, pos_embed, neg_embed)
         return BiOutput(loss, None)

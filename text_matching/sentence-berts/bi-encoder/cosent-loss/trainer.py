@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class BiTrainer(Trainer):
 
-    def compute_loss(self, model: SentenceBert, inputs, return_outputs=False):
+    def compute_loss(self, model: SentenceBert, inputs, return_outputs=False, **kwargs):
         outputs = model(**inputs)
         loss = outputs.loss
 

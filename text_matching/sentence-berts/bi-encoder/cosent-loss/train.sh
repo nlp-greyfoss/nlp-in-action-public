@@ -2,7 +2,7 @@ timestamp=$(date +%Y%m%d%H%M)
 logfile="train_${timestamp}.log"
 
 # change CUDA_VISIBLE_DEVICES
-CUDA_VISIBLE_DEVICES=1  python train.py \
+CUDA_VISIBLE_DEVICES=2  python train.py \
     --model_name_or_path=hfl/chinese-macbert-large \
     --output_dir=output \
     --train_data_path=data/train.txt \

@@ -10,3 +10,4 @@ transformers==4.30.2
 datasets==2.14.4
 sentencepiece==0.1.99
 GPUtil==1.4.0
+faiss-cpu==1.9.0

@@ -10,6 +10,7 @@ from trainer import TripletTrainer
 from arguments import DataArguments, ModelArguments
 from dataset import TripletCollator, TripletDataset
 import os
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -17,7 +18,7 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-os.environ["WANDB_PROJECT"]="simple-constrastive-learning"
+os.environ["WANDB_PROJECT"] = "constrastive-learning"
 
 
 def main():
@@ -42,13 +43,13 @@ def main():
     tokenizer = model.tokenizer
 
     train_dataset = TripletDataset(data_args.train_data_path)
-    #eval_dataset = PairDataset(data_args.eval_data_path)
+    # eval_dataset = PairDataset(data_args.eval_data_path)
 
     trainer = TripletTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
-        #eval_dataset=eval_dataset,
+        # eval_dataset=eval_dataset,
         data_collator=TripletCollator(),
         tokenizer=tokenizer,
     )
